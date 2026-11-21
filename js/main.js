@@ -76,25 +76,20 @@
   document.querySelectorAll('.lang button').forEach(b => b.addEventListener('click', () => setLang(b.dataset.l)));
   setLang(localStorage.getItem('cta-lang') || 'en');
 
-  // ---------- Admin login (Firebase Authentication) ----------
-  // The real protection is the Firebase security rules (see FIREBASE_SETUP.md);
-  // the UI below only shows/hides the admin buttons.
+  // ---------- Admin login ----------
+  // Static, client-side check for now (UI gate only: anyone can read these in the page source).
+  // Replace with a real backend login (e.g. Firebase Authentication) later.
+  const ADMIN = { user: 'admin@gmail.com', pass: 'Test@123' };
+  const AUTH_KEY = 'cta-auth';
   const listeners = [];
-  let admin = false;
-  const isAdmin = () => admin;
+  const isAdmin = () => localStorage.getItem(AUTH_KEY) === '1';
   const loginBtn = document.getElementById('loginBtn');
   const renderAuth = () => {
-    document.body.classList.toggle('is-admin', admin);
-    loginBtn.innerHTML = admin ? '🔓 ' + B('Logout', 'வெளியேறு') : '🔒 ' + B('Login', 'உள்நுழை');
-    listeners.forEach(fn => fn(admin));
+    document.body.classList.toggle('is-admin', isAdmin());
+    loginBtn.innerHTML = isAdmin() ? '🔓 ' + B('Logout', 'வெளியேறு') : '🔒 ' + B('Login', 'உள்நுழை');
+    listeners.forEach(fn => fn(isAdmin()));
   };
-  const fbUrl = new URL('firebase.js', document.currentScript.src).href;
-  const fb = import(fbUrl).catch(e => { console.error('Firebase failed to load', e); return null; });
-  fb.then(m => m && m.onAuth(u => {
-    if (u && u.email.toLowerCase() !== m.ADMIN_EMAIL.toLowerCase()) { m.logout(); return; }
-    admin = !!u; renderAuth();
-  }));
-  window.CTAAuth = { isAdmin, onChange: fn => listeners.push(fn), fb };
+  window.CTAAuth = { isAdmin, onChange: fn => listeners.push(fn) };
 
   document.body.insertAdjacentHTML('beforeend', `
   <div class="modal" id="loginModal" role="dialog" aria-modal="true" aria-labelledby="loginTitle"><div class="modal-box">
@@ -114,24 +109,19 @@
   lm.addEventListener('click', e => { if (e.target === lm || e.target.hasAttribute('data-close')) closeLogin(); });
   document.addEventListener('keydown', e => e.key === 'Escape' && closeLogin());
   loginBtn.addEventListener('click', () => {
-    if (admin) { fb.then(m => m && m.logout()); return; }
+    if (isAdmin()) { localStorage.removeItem(AUTH_KEY); renderAuth(); return; }
     document.getElementById('lgErr').textContent = '';
     lm.classList.add('open');
     document.getElementById('lgUser').focus();
   });
-  document.getElementById('loginForm').addEventListener('submit', async e => {
+  document.getElementById('loginForm').addEventListener('submit', e => {
     e.preventDefault();
-    const form = e.target, err = document.getElementById('lgErr'), ta = document.body.dataset.lang === 'ta';
     const u = document.getElementById('lgUser').value.trim(), p = document.getElementById('lgPass').value;
-    const m = await fb;
-    if (!m || !m.configured) { err.textContent = ta ? 'Firebase அமைக்கப்படவில்லை.' : 'Firebase is not configured yet (see FIREBASE_SETUP.md).'; return; }
-    err.textContent = '';
-    try {
-      const cred = await m.login(u, p);
-      if (cred.user.email.toLowerCase() !== m.ADMIN_EMAIL.toLowerCase()) { await m.logout(); throw new Error('not admin'); }
-      form.reset(); closeLogin();
-    } catch (x) {
-      err.textContent = ta ? 'பயனர்பெயர் அல்லது கடவுச்சொல் தவறு.' : 'Invalid username or password.';
+    if (u.toLowerCase() === ADMIN.user && p === ADMIN.pass) {
+      localStorage.setItem(AUTH_KEY, '1');
+      e.target.reset(); closeLogin(); renderAuth();
+    } else {
+      document.getElementById('lgErr').textContent = document.body.dataset.lang === 'ta' ? 'பயனர்பெயர் அல்லது கடவுச்சொல் தவறு.' : 'Invalid username or password.';
     }
   });
   renderAuth();

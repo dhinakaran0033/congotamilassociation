@@ -378,3 +378,4 @@ body.is-admin .admin-bar{display:flex}
 .issue .desc{color:var(--muted);margin-top:8px;white-space:pre-line}
 .del-btn{display:none}
 body.is-admin .del-btn{display:inline-flex}
+.empty-note{text-align:center;color:var(--muted);padding:30px}

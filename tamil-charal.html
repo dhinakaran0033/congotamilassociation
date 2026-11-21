@@ -47,81 +47,91 @@
     <img class="img-preview" id="bkPrev" alt="Preview">
     <label for="bkPdf"><span class="en">PDF file (max 25 MB)</span><span class="ta">PDF கோப்பு (அதிகபட்சம் 25 MB)</span></label>
     <input id="bkPdf" type="file" accept="application/pdf,.pdf" required>
-    <label for="bkTok"><span class="en">GitHub token (needed to save files; kept only for this session)</span><span class="ta">GitHub டோக்கன் (இந்த அமர்வில் மட்டும்)</span></label>
-    <input id="bkTok" type="password" autocomplete="off" placeholder="github_pat_...">
     <div class="form-err" id="bkErr" role="alert"></div>
     <button class="btn btn-gold" type="submit"><span class="en">Save Book</span><span class="ta">சேமி</span></button>
   </form>
 </div></div>
 
+
 <script src="js/main.js"></script>
 <script>
-/* Tamil Charal library: books live in Firebase (Firestore + Storage), visible to everyone.
-   Only the signed-in admin sees Add/Delete (enforced by Firebase security rules). */
+/* Tamil Charal library. Books are kept in this browser's IndexedDB (local only).
+   The `store` object below is the only storage-specific part, so it can be swapped
+   for Firebase/another backend later without touching the UI code. */
 (function () {
   const MAX_IMG = 5 << 20, MAX_PDF = 25 << 20;
-  // Shown (read-only) until the first admin visit imports them into Firestore, or if Firebase isn't set up.
   const SEED = [
-    { createdAt: 2, title: 'ஆப்பிரிக்க தமிழச்சாரல் – ஐப்பசி இதழ் – 2026', description: 'Africa Tamil Charal – Aippasi (Ippasy) Issue – 2026',
+    { id: 'seed-ippasy-2026', createdAt: 2, title: 'ஆப்பிரிக்க தமிழச்சாரல் – ஐப்பசி இதழ் – 2026', description: 'Africa Tamil Charal – Aippasi (Ippasy) Issue – 2026',
       imageUrl: 'images/TS-2026-Ippasy_Page_01.jpg', pdfUrl: 'https://www.congotamilassociation.com/wp-content/uploads/2026/11/TS-2026-Ippasy-Nov.pdf' },
-    { createdAt: 1, title: 'ஆப்பிரிக்க தமிழச்சாரல் – புரட்டாசி இதழ் – 2026', description: 'Africa Tamil Charal – Purattasi Issue – 2026',
+    { id: 'seed-purattasi-2026', createdAt: 1, title: 'ஆப்பிரிக்க தமிழச்சாரல் – புரட்டாசி இதழ் – 2026', description: 'Africa Tamil Charal – Purattasi Issue – 2026',
       imageUrl: 'images/ATC-26-Purattasi-TS_Page_01.jpg', pdfUrl: 'https://www.congotamilassociation.com/wp-content/uploads/2026/10/ATC-26-Purattasi-TS.pdf' }
   ];
 
+  // ---------- Storage layer (IndexedDB) ----------
+  const store = (() => {
+    const DB = 'cta-charal', STORE = 'books';
+    const open = () => new Promise((res, rej) => {
+      const r = indexedDB.open(DB, 1);
+      r.onupgradeneeded = () => r.result.createObjectStore(STORE, { keyPath: 'id' });
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    });
+    const run = async (mode, fn) => {
+      const db = await open();
+      return new Promise((res, rej) => {
+        const tx = db.transaction(STORE, mode), out = fn(tx.objectStore(STORE));
+        tx.oncomplete = () => { db.close(); res(out && out.result); }; tx.onerror = () => rej(tx.error);
+      });
+    };
+    return {
+      async list() {
+        // Seed once, so deleted original issues stay deleted
+        if (!localStorage.getItem('cta-charal-seeded')) { for (const b of SEED) await run('readwrite', s => s.put(b)); localStorage.setItem('cta-charal-seeded', '1'); }
+        return (await run('readonly', s => s.getAll())).sort((a, b) => b.createdAt - a.createdAt);
+      },
+      add: ({ title, description, image, pdf }) => run('readwrite', s => s.put({ id: 'b' + Date.now() + Math.random().toString(36).slice(2, 6), createdAt: Date.now(), title, description, image, pdf })),
+      remove: id => run('readwrite', s => s.delete(id))
+    };
+  })();
+
+  // ---------- UI ----------
   const list = document.getElementById('bookList');
+  let urls = [];
   const T = (en, ta) => { const f = document.createDocumentFragment();
     [['en', en], ['ta', ta]].forEach(([c, t]) => { const s = document.createElement('span'); s.className = c; s.textContent = t; f.append(s); }); return f; };
   const el = (tag, cls, ...kids) => { const e = document.createElement(tag); if (cls) e.className = cls; e.append(...kids); return e; };
-  // Only allow http(s)/relative URLs from the database into href/src
-  const safe = u => /^(https?:\/\/|images\/|uploads\/)/i.test(u) ? u : '#';
-
-  let fb = null, seeding = false;
+  const blobUrl = f => { const u = URL.createObjectURL(f); urls.push(u); return u; };
 
   function card(b, first) {
-    const cover = el('img'); cover.src = safe(b.imageUrl); cover.alt = b.title; cover.loading = 'lazy';
-    const read = el('a', 'btn btn-maroon', '📖 ', T('READ ONLINE', 'இணையத்தில் படிக்க')); read.href = safe(b.pdfUrl); read.target = '_blank'; read.rel = 'noopener';
-    const dl = el('a', 'btn btn-gold', '⬇ ', T('DOWNLOAD PDF', 'PDF பதிவிறக்கம்')); dl.href = safe(b.pdfUrl); dl.target = '_blank'; dl.rel = 'noopener'; dl.download = (b.title.replace(/[\\/:*?"<>|]+/g, '').trim() || 'book') + '.pdf';
-    const btns = el('div', 'btns', read, dl);
-    if (b.id) {
-      const rm = el('button', 'btn btn-danger del-btn', '🗑 ', T('DELETE', 'நீக்கு')); rm.type = 'button';
-      rm.onclick = async () => {
-        if (!CTAAuth.isAdmin() || !confirm('Delete "' + b.title + '"?')) return;
-        rm.disabled = true;
-        const tok = fb.getGhToken() || (prompt('Paste your GitHub token (needed to delete the files):') || '').trim();
-        if (!tok) { rm.disabled = false; return; }
-        try { await fb.removeBook(b, tok); await render(); } catch (e) { rm.disabled = false; alert('Delete failed: ' + e.message); }
-      };
-      btns.append(rm);
-    }
+    const cover = el('img'); cover.src = b.image ? blobUrl(b.image) : b.imageUrl; cover.alt = b.title; cover.loading = 'lazy';
+    const pdf = b.pdf ? blobUrl(b.pdf) : b.pdfUrl;
+    const read = el('a', 'btn btn-maroon', '📖 ', T('READ ONLINE', 'இணையத்தில் படிக்க')); read.href = pdf; read.target = '_blank'; read.rel = 'noopener';
+    const dl = el('a', 'btn btn-gold', '⬇ ', T('DOWNLOAD PDF', 'PDF பதிவிறக்கம்')); dl.href = pdf; dl.download = (b.title.replace(/[\\/:*?"<>|]+/g, '').trim() || 'book') + '.pdf';
+    const rm = el('button', 'btn btn-danger del-btn', '🗑 ', T('DELETE', 'நீக்கு')); rm.type = 'button';
+    rm.onclick = async () => { if (CTAAuth.isAdmin() && confirm('Delete "' + b.title + '"?')) { await store.remove(b.id); render(); } };
     const info = el('div');
     if (first) info.append(el('span', 'date-tag', T('Latest issue', 'புதிய இதழ்')));
     const d = el('p', 'desc'); d.textContent = b.description;
-    info.append(el('h2', null, b.title), d, btns);
+    info.append(el('h2', null, b.title), d, el('div', 'btns', read, dl, rm));
     return el('div', 'issue in', cover, info);
   }
 
   async function render() {
-    let books = [];
-    try { books = fb && fb.configured ? await fb.listBooks() : []; } catch (e) { console.error(e); }
-    if (!books.length) books = SEED;
-    list.replaceChildren(...books.map((b, i) => card(b, i === 0)));
-    // First admin visit with an empty database: import the two original issues
-    if (books === SEED && CTAAuth.isAdmin() && fb && fb.configured && !seeding) {
-      seeding = true;
-      try { for (const b of [...SEED].reverse()) await fb.addRaw(b); await render(); } catch (e) { console.error(e); } finally { seeding = false; }
-    }
+    urls.forEach(u => URL.revokeObjectURL(u)); urls = [];
+    try {
+      const books = await store.list();
+      list.replaceChildren(...(books.length ? books.map((b, i) => card(b, i === 0)) : [el('p', 'empty-note', T('No books yet.', 'இதழ்கள் இல்லை.'))]));
+    } catch (e) { list.textContent = 'Could not open local database: ' + e.message; }
   }
-
-  CTAAuth.fb.then(m => { fb = m; return render(); });
-  CTAAuth.onChange(ok => { if (!ok) close(); if (fb) render(); });
+  render();
 
   // ----- Add-book popup -----
   const modal = document.getElementById('bookModal'), form = document.getElementById('bookForm');
-  const err = document.getElementById('bkErr'), prev = document.getElementById('bkPrev'), submit = form.querySelector('[type=submit]');
-  function close() { modal.classList.remove('open'); }
+  const err = document.getElementById('bkErr'), prev = document.getElementById('bkPrev');
+  const close = () => modal.classList.remove('open');
   document.getElementById('addBookBtn').onclick = () => { if (!CTAAuth.isAdmin()) return; form.reset(); prev.style.display = 'none'; err.textContent = ''; modal.classList.add('open'); };
   modal.addEventListener('click', e => { if (e.target === modal || e.target.hasAttribute('data-close')) close(); });
   document.addEventListener('keydown', e => e.key === 'Escape' && close());
+  CTAAuth.onChange(ok => { if (!ok) close(); });
   document.getElementById('bkImg').onchange = e => {
     const f = e.target.files[0]; if (prev.src.startsWith('blob:')) URL.revokeObjectURL(prev.src);
     if (f && f.type.startsWith('image/')) { prev.src = URL.createObjectURL(f); prev.style.display = 'block'; } else prev.style.display = 'none';
@@ -138,15 +148,8 @@
     if (image.size > MAX_IMG) return fail('Image must be 5 MB or smaller.');
     if (!pdf || (pdf.type !== 'application/pdf' && !/\.pdf$/i.test(pdf.name))) return fail('Please choose a PDF file.');
     if (pdf.size > MAX_PDF) return fail('PDF must be 25 MB or smaller.');
-    const ghToken = form.bkTok.value.trim() || fb.getGhToken();
-    if (!ghToken) return fail('Please paste your GitHub token.');
-    submit.disabled = true; err.textContent = 'Uploading to GitHub… please wait.';
-    try {
-      await fb.addBook({ title, description, image, pdf, ghToken });
-      close(); await render();
-      alert('Saved. On GitHub Pages the new files appear on the live site in about 1–2 minutes.');
-    } catch (x) { fail('Could not save: ' + x.message); }
-    finally { submit.disabled = false; }
+    try { await store.add({ title, description, image, pdf }); close(); render(); }
+    catch (x) { fail('Could not save: ' + x.message); }
   });
 })();
 </script>
