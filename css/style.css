@@ -327,7 +327,7 @@ header.nav.stuck .brand img{width:48px;height:48px}
   footer .wrap{grid-template-columns:1fr}
   .section{padding:64px 0}
   .brand small{display:none}
-  .nav-actions .btn{display:none}
+  .nav-actions .btn:not(.btn-login){display:none}
 }
 
 /* ---------- Header alignment fix (Tamil labels are wider) ---------- */
@@ -353,3 +353,28 @@ body[data-lang="ta"] .nav-actions .btn{padding:9px 16px}
   .nav-actions{margin-left:auto}
 }
 @media(max-width:560px){.brand b{font-size:.92rem}.brand img{width:46px;height:46px}.lang button{padding:6px 10px}}
+
+/* ---------- Admin login + dynamic Charal library ---------- */
+.btn-login{background:transparent;border-color:var(--maroon);color:var(--maroon)}
+.btn-login:hover{background:var(--maroon);color:var(--gold)}
+.modal{position:fixed;inset:0;z-index:300;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(61,8,20,.6);backdrop-filter:blur(6px)}
+.modal.open{display:flex}
+.modal-box{position:relative;width:min(480px,100%);max-height:92vh;overflow:auto;background:var(--cream);border:1px solid var(--gold);border-radius:var(--radius);padding:32px 28px;box-shadow:var(--shadow);text-align:left;animation:modalIn .3s ease}
+@keyframes modalIn{from{opacity:0;transform:translateY(20px) scale(.97)}to{opacity:1;transform:none}}
+.modal-box h3{font-family:var(--font-head);color:var(--maroon);font-size:1.4rem;margin-bottom:18px}
+.modal-x{position:absolute;top:12px;right:14px;border:0;background:none;font-size:1.3rem;cursor:pointer;color:var(--maroon)}
+.modal-box label{display:block;font-weight:600;font-size:.9rem;margin:14px 0 6px;color:var(--ink)}
+.modal-box input,.modal-box textarea{width:100%;padding:12px 14px;border:1.5px solid #e4cfa0;border-radius:12px;font:inherit;background:#fff}
+.modal-box input:focus,.modal-box textarea:focus{outline:none;border-color:var(--saffron);box-shadow:0 0 0 3px rgba(255,138,31,.2)}
+.modal-box textarea{min-height:100px;resize:vertical}
+.modal-box .btn{margin-top:22px;width:100%;justify-content:center}
+.form-err{color:#b3261e;font-size:.88rem;margin-top:12px;min-height:1.2em}
+.img-preview{display:none;margin-top:10px;max-height:150px;border-radius:10px;border:1px solid var(--gold)}
+.admin-bar{display:none;justify-content:center;margin-top:30px}
+body.is-admin .admin-bar{display:flex}
+.btn-danger{background:#b3261e;color:#fff}
+.btn-danger:hover{background:#8c1d18;transform:translateY(-3px)}
+.issue img{width:100%;height:auto;object-fit:cover}
+.issue .desc{color:var(--muted);margin-top:8px;white-space:pre-line}
+.del-btn{display:none}
+body.is-admin .del-btn{display:inline-flex}
