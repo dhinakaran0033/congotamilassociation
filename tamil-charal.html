@@ -53,45 +53,15 @@
 </div></div>
 
 
+<script src="js/db.js"></script>
 <script src="js/main.js"></script>
 <script>
-/* Tamil Charal library. Books are kept in this browser's IndexedDB (local only).
-   The `store` object below is the only storage-specific part, so it can be swapped
-   for Firebase/another backend later without touching the UI code. */
+/* Tamil Charal library. Books are stored via js/db.js (browser IndexedDB, local only). */
 (function () {
   const MAX_IMG = 5 << 20, MAX_PDF = 25 << 20;
-  const SEED = [
-    { id: 'seed-ippasy-2026', createdAt: 2, title: 'ஆப்பிரிக்க தமிழச்சாரல் – ஐப்பசி இதழ் – 2026', description: 'Africa Tamil Charal – Aippasi (Ippasy) Issue – 2026',
-      imageUrl: 'images/TS-2026-Ippasy_Page_01.jpg', pdfUrl: 'https://www.congotamilassociation.com/wp-content/uploads/2026/11/TS-2026-Ippasy-Nov.pdf' },
-    { id: 'seed-purattasi-2026', createdAt: 1, title: 'ஆப்பிரிக்க தமிழச்சாரல் – புரட்டாசி இதழ் – 2026', description: 'Africa Tamil Charal – Purattasi Issue – 2026',
-      imageUrl: 'images/ATC-26-Purattasi-TS_Page_01.jpg', pdfUrl: 'https://www.congotamilassociation.com/wp-content/uploads/2026/10/ATC-26-Purattasi-TS.pdf' }
-  ];
-
-  // ---------- Storage layer (IndexedDB) ----------
-  const store = (() => {
-    const DB = 'cta-charal', STORE = 'books';
-    const open = () => new Promise((res, rej) => {
-      const r = indexedDB.open(DB, 1);
-      r.onupgradeneeded = () => r.result.createObjectStore(STORE, { keyPath: 'id' });
-      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
-    });
-    const run = async (mode, fn) => {
-      const db = await open();
-      return new Promise((res, rej) => {
-        const tx = db.transaction(STORE, mode), out = fn(tx.objectStore(STORE));
-        tx.oncomplete = () => { db.close(); res(out && out.result); }; tx.onerror = () => rej(tx.error);
-      });
-    };
-    return {
-      async list() {
-        // Seed once, so deleted original issues stay deleted
-        if (!localStorage.getItem('cta-charal-seeded')) { for (const b of SEED) await run('readwrite', s => s.put(b)); localStorage.setItem('cta-charal-seeded', '1'); }
-        return (await run('readonly', s => s.getAll())).sort((a, b) => b.createdAt - a.createdAt);
-      },
-      add: ({ title, description, image, pdf }) => run('readwrite', s => s.put({ id: 'b' + Date.now() + Math.random().toString(36).slice(2, 6), createdAt: Date.now(), title, description, image, pdf })),
-      remove: id => run('readwrite', s => s.delete(id))
-    };
-  })();
+  const store = CTADB.collection('books');
+  const listBooks = store.list;
+  store.list = async () => (await listBooks()).sort((a, b) => b.createdAt - a.createdAt);
 
   // ---------- UI ----------
   const list = document.getElementById('bookList');
